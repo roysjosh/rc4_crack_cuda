@@ -8,9 +8,9 @@
 #include <math.h>
 #include <Windows.h>
 
-//21-7E,totally 94 characters
-#define START_CHARACTER 0x21
-#define END_CHARACTER 0x7E
+//This is binary so all characters are valid
+#define START_CHARACTER 0x00
+#define END_CHARACTER 0xFF
 #define KEY (END_CHARACTER-START_CHARACTER+1)
 
 #define BLOCK_NUM 2
@@ -18,7 +18,7 @@
 
 // space is actually enough with 10, the reason for taking 20 is mainly to avoid bank conflicts
 #define MEMEORY_PER_THREAD 20
-#define MAX_KEY_LENGTH 10 //max key length
+#define MAX_KEY_LENGTH 5 //max key length
 #define STATE_LEN	256
 #define MAX_KNOWN_STREAM_LEN 4
 
