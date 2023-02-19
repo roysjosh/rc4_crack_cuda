@@ -1,9 +1,9 @@
 #include "rc4.h"
 /************************************************************************/
 /* 
-±¾À´µÄË¼Â·ÊÇÃ¿´Î»ñÈ¡Ò»¸öÃÜÔ¿£¬½âÃÜ¶ÔÓ¦µÄÃÜÎÄ£¬¿´µÃµ½µÄÃ÷ÎÄÊÇ·ñÂú×ãÄ³¸öÌõ¼ş£¬
-µ«ÊÇ¹ı³ÌÖĞĞèÒªµÄÖĞ¼ä±äÁ¿Ì«¶àÁË£¬×ªÄîÒ»Ïë£¬Ã÷ÎÄºÍÃÜÎÄÊÇÒì»òµÄ¹ØÏµ£¬ÄÇÃ´ÒÑÖªÃ÷
-ÎÄºÍÃÜÎÄÒì»òµÄ»°¾ÍÄÜµÃµ½ÃÜÔ¿Á÷µÄÄ³Ğ©Î»ÖÃµÄÖµ¡£ÕâÑù¾Í¿ÉÒÔÊ¡È¥²»ÉÙ¿Õ¼ä~~
+The original idea is to obtain one key at a time, decrypt the corresponding ciphertext, and see if the resulting plaintext satisfies a certain condition.
+But the process requires too many intermediate variables, and on second thought, the plaintext and ciphertext are heterogeneous or related, so the known plaintext
+If the text and the ciphertext are dissimilar, we can get the value of some position of the key stream. This saves a lot of space~~
 */
 /************************************************************************/
 
@@ -30,25 +30,25 @@ __global__ void crackRc4Kernel(unsigned char*key, volatile bool *found)
 	bool justIt=true;
 	for (unsigned long long i=0; i<=keyNum_per_thread; val+=totalThreadNum,i++)
 	{
-		//ÕÒµ½µÄ»°ÍË³ö
+		//Exit if found
 		if(*found) asm("exit;");
 		if(val==0) continue;
 
-		//vKeyÊÇshare_memoryµÄÒ»¸öÖ¸Õë
+		//vKey is a pointer to share_memory
 		unsigned char*vKey=genKey((shared_mem+memory_per_thread*tid),val,&keyLen);
 
-		//ÕÒµ½µÄ»°ÍË³ö
+		//Exit if found
 		if(*found) asm("exit;");
 
 		justIt=device_isKeyRight(vKey,keyLen,found);
 
-		//ÕÒµ½µÄ»°ÍË³ö
+		//Exit if found
 		if(*found) asm("exit;");
 
-		//µ±Ç°ÃÜÔ¿²»ÊÇËùÇó
+		// the current key is not the requested one
 		if (!justIt) continue;
 
-		//ÕÒµ½Æ¥ÅäÃÜÔ¿£¬Ğ´µ½Host£¬±£´æÊı¾İ,ĞŞ¸Äfound,ÍË³ö³ÌĞò
+		// Find the matching key, write it to Host, save the data, modify found, and exit the program
 		*found=true;
 		memcpy(key,vKey,keyLen);
 		key[keyLen]=0;
@@ -88,14 +88,14 @@ cudaError_t crackRc4WithCuda(unsigned char* knownKeyStream_host, int knownStream
 		goto Error;
 	}
 
-	//¼ìÑéÊÇ·ñÕÒµ½ÃÜÔ¿±äÁ¿
+	//Check if the key variable is found
 	cudaStatus = cudaMemcpy(found_dev, found, sizeof(bool), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
 		goto Error;
 	}
 
-	//¸´ÖÆ³£Á¿ÄÚ´æ
+	//Copy constant memory
 	cudaStatus = cudaMemcpyToSymbol(knowStream_device, knownKeyStream_host,sizeof(unsigned char)*knownStreamLen_host);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpyToSymbol failed!");
@@ -156,10 +156,10 @@ int main(int argc, char *argv[])
 {
 //	printf("%c",0x7d);
 	unsigned char* s_box = (unsigned char*)malloc(sizeof(unsigned char)*256);
-	//ÃÜÔ¿
+	//Key
 	unsigned char encryptKey[]="!!!}";
-	//Ã÷ÎÄ
-	unsigned char buffer[] = "Life is a chain of moments of enjoyment, not only about survivalO(¡É_¡É)O~";
+	//Explicit text
+	unsigned char buffer[] = "Life is a chain of moments of enjoyment, not only about survivalO(âˆ©_âˆ©)O~";
 	int buffer_len=strlen((char*)buffer);
 	prepare_key(encryptKey,strlen((char*)encryptKey),s_box);
 	rc4(buffer,buffer_len,s_box);	

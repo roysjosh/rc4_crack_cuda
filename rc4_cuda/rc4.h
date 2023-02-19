@@ -16,7 +16,7 @@
 #define BLOCK_NUM 2
 #define MAX_THREAD_NUM 256
 
-//空间其实只要10个就足够了，取20的原因主要是为了避免bank conflicts
+// space is actually enough with 10, the reason for taking 20 is mainly to avoid bank conflicts
 #define MEMEORY_PER_THREAD 20
 #define MAX_KEY_LENGTH 10 //max key length
 #define STATE_LEN	256
