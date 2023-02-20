@@ -1,4 +1,5 @@
 #include "rc4.h"
+#include "cuda_profiler_api.h"
 
 /************************************************************************/
 /* 
@@ -123,6 +124,20 @@ cudaError_t crackRc4WithCuda(unsigned char* knownKeyStream_host, int knownStream
     return cudaStatus;
   }
 
+  //Initialize the state here, so we can just copy it
+  short counter=0;
+  unsigned char state_host[STATE_LEN];
+  for(counter = 0; counter < STATE_LEN; counter++)          
+  {
+		state_host[counter] = counter;
+  }
+  cudaStatus = cudaMemcpyToSymbol(initialArray_device, state_host, sizeof(unsigned char) * STATE_LEN);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpyToSymbol streamlen failed!");
+		cleanup(key_dev, found_dev);
+    return cudaStatus;
+  }
+
 	// Launch a kernel on the GPU with one thread for each element.
 	int threadNum=floor( (double) (prop.sharedMemPerBlock / MEMORY_PER_THREAD) ), share_memory = prop.sharedMemPerBlock;
 	if(threadNum > MAX_THREAD_NUM )
@@ -130,8 +145,13 @@ cudaError_t crackRc4WithCuda(unsigned char* knownKeyStream_host, int knownStream
 		threadNum = MAX_THREAD_NUM;
 		share_memory = threadNum * MEMORY_PER_THREAD;
 	}
-  fprintf(stderr, threadNum + "\n");
+
+  //dim3 threadblock;
+  //threadblock.x = (int)floor(sqrt(threadNum));
+  //threadblock.y = threadNum / threadblock.x;
+  cudaProfilerStart();
 	crackRc4Kernel<<<BLOCK_NUM, threadNum, share_memory>>>(key_dev, found_dev);
+  cudaProfilerStop();
 
 	// Check for any errors launching the kernel
 	cudaStatus = cudaGetLastError();
@@ -193,7 +213,7 @@ int main(int argc, char *argv[])
 	rc4(buffer,buffer_len,s_box);	
   
   printf ("\nThe cyphertext is:\n%02x%02x%02x%02x%02x\n",buffer[0],buffer[1],buffer[2],buffer[3],buffer[4]);
-	unsigned char knownPlainText[]="Pla";
+	unsigned char knownPlainText[]="Plain";
 	int known_p_len=strlen((char*)knownPlainText);
 	unsigned char* knownKeyStream=(unsigned char*) malloc(sizeof(unsigned char) * known_p_len);
 	for (int i=0;i<known_p_len;i++)

@@ -16,7 +16,7 @@
 #define KEY (END_CHARACTER-START_CHARACTER+1)
 
 #define BLOCK_NUM 32
-#define MAX_THREAD_NUM 128
+#define MAX_THREAD_NUM 256
 
 // space is actually enough with 10, the reason for taking 20 is mainly to avoid bank conflicts
 #define MEMORY_PER_THREAD 16
@@ -30,6 +30,7 @@ __constant__ unsigned int keyNum=KEY;
 __constant__ unsigned int start=START_CHARACTER;
 __constant__ unsigned int memory_per_thread=MEMORY_PER_THREAD;
 __constant__ unsigned char knownStreamLen_device;
+__constant__ unsigned char initialArray_device[STATE_LEN];
 __constant__ unsigned char knowStream_device[MAX_KNOWN_STREAM_LEN];
 
 
@@ -57,17 +58,18 @@ __device__ __host__ static void swap_byte(unsigned char *a, unsigned char *b)
 	*b = swapByte; 
 }
 
-__device__ bool device_isKeyRight(const unsigned char *validateKey,const int key_len,volatile bool* found) 
+__device__ bool device_isKeyRight(const unsigned char *validateKey, const int key_len, volatile bool* found) 
 { 
 	//KSA
 	unsigned char state[STATE_LEN];
 	unsigned char index1=0, index2=0;
-	short counter=0;    
+	short counter=0;
 
-    if(*found) asm("exit;");   
+  if(*found) asm("exit;");   
 
-	for(counter = 0; counter < STATE_LEN; counter++)          
-		state[counter] = counter;   
+	//for(counter = 0; counter < STATE_LEN; counter++)          
+	//	state[counter] = counter;
+  memcpy(state, initialArray_device, STATE_LEN);
 
 	if(*found) asm("exit;");
 
@@ -82,7 +84,7 @@ __device__ bool device_isKeyRight(const unsigned char *validateKey,const int key
 
 	//PRGA
 	index1=0, index2=0, counter=0; 
-	for (;counter<knownStreamLen_device;counter++)
+	for (; counter < knownStreamLen_device; counter++)
 	{
 		if(knowStream_device[counter]!=rc4_single(&index1,&index2,state))
 			return false;
@@ -101,20 +103,20 @@ __device__ bool device_isKeyRight(const unsigned char *validateKey,const int key
  *
  * \return void
 **/
-__device__ __host__ unsigned char rc4_single(unsigned char*x, unsigned char * y, unsigned char *s_box) 
+__device__ __host__ unsigned char rc4_single(unsigned char* x, unsigned char* y, unsigned char* s_box) 
 {  
-	unsigned char* state, xorIndex; 
+	unsigned char* state, xorIndex;
 
-	state = &s_box[0];    
+	state = &s_box[0];
 
-	*x = (*x + 1);                
-	*y = (state[*x] + *y);            
-	swap_byte(&state[*x], &state[*y]);                  
+	*x = (*x + 1);            
+	*y = (state[*x] + *y);
+	swap_byte(&state[*x], &state[*y]);
 
-	xorIndex = (state[*x] + state[*y]);            
+	xorIndex = (state[*x] + state[*y]);
 
 	return  state[xorIndex];        
-} 
+}
 
 /**
  * \brief rc4 s-box init
