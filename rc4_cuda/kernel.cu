@@ -124,12 +124,13 @@ cudaError_t crackRc4WithCuda(unsigned char* knownKeyStream_host, int knownStream
   }
 
 	// Launch a kernel on the GPU with one thread for each element.
-	int threadNum=floor( (double) (prop.sharedMemPerBlock / MEMEORY_PER_THREAD) ), share_memory = prop.sharedMemPerBlock;
+	int threadNum=floor( (double) (prop.sharedMemPerBlock / MEMORY_PER_THREAD) ), share_memory = prop.sharedMemPerBlock;
 	if(threadNum > MAX_THREAD_NUM )
   {
 		threadNum = MAX_THREAD_NUM;
-		share_memory = threadNum * MEMEORY_PER_THREAD;
+		share_memory = threadNum * MEMORY_PER_THREAD;
 	}
+  fprintf(stderr, threadNum + "\n");
 	crackRc4Kernel<<<BLOCK_NUM, threadNum, share_memory>>>(key_dev, found_dev);
 
 	// Check for any errors launching the kernel

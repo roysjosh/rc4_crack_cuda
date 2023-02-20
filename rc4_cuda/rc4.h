@@ -19,7 +19,7 @@
 #define MAX_THREAD_NUM 128
 
 // space is actually enough with 10, the reason for taking 20 is mainly to avoid bank conflicts
-#define MEMEORY_PER_THREAD 16
+#define MEMORY_PER_THREAD 16
 #define MAX_KEY_LENGTH 5 //max key length
 #define STATE_LEN	256
 #define MAX_KNOWN_STREAM_LEN 5
@@ -28,7 +28,7 @@ __constant__ unsigned long long maxNum=0xFFFFFFFFFFFFFFFF;
 __constant__ unsigned int maxKeyLen=MAX_KEY_LENGTH;
 __constant__ unsigned int keyNum=KEY;
 __constant__ unsigned int start=START_CHARACTER;
-__constant__ unsigned int memory_per_thread=MEMEORY_PER_THREAD;
+__constant__ unsigned int memory_per_thread=MEMORY_PER_THREAD;
 __constant__ unsigned char knownStreamLen_device;
 __constant__ unsigned char knowStream_device[MAX_KNOWN_STREAM_LEN];
 
