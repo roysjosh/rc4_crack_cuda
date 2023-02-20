@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <iostream>
+#include <fstream>
 #include <time.h>
 #include <math.h>
 #include <Windows.h>
@@ -13,14 +15,14 @@
 #define END_CHARACTER 0xFF
 #define KEY (END_CHARACTER-START_CHARACTER+1)
 
-#define BLOCK_NUM 2
-#define MAX_THREAD_NUM 256
+#define BLOCK_NUM 32
+#define MAX_THREAD_NUM 128
 
 // space is actually enough with 10, the reason for taking 20 is mainly to avoid bank conflicts
-#define MEMEORY_PER_THREAD 20
+#define MEMEORY_PER_THREAD 16
 #define MAX_KEY_LENGTH 5 //max key length
 #define STATE_LEN	256
-#define MAX_KNOWN_STREAM_LEN 4
+#define MAX_KNOWN_STREAM_LEN 5
 
 __constant__ unsigned long long maxNum=0xFFFFFFFFFFFFFFFF;
 __constant__ unsigned int maxKeyLen=MAX_KEY_LENGTH;
