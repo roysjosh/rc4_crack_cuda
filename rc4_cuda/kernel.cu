@@ -166,24 +166,15 @@ int main(int argc, char *argv[])
 	unsigned char* s_box = (unsigned char*)malloc(sizeof(unsigned char)*256);
 
 	//Key
-	//unsigned char encryptKey[]="Key";
-
-	//Load from file
-  std::ifstream input_stream("cipher");
-  char temp_buffer[700];
-  unsigned char buffer[700];
-  input_stream.read(temp_buffer,700);
-  input_stream.close();
-  std::strcpy(reinterpret_cast<char*>(buffer),temp_buffer);
-  
-  //unsigned char buffer[] = "Plaintext";
+	unsigned char encryptKey[] = "KeyKe";
+  unsigned char buffer[] = "Plaintext";
 	
-  int buffer_len=strlen((char*)buffer);
+  int buffer_len = strlen( (char*)buffer);
 	
-  //prepare_key(encryptKey, strlen((char*)encryptKey), s_box);
-	//rc4(buffer,buffer_len,s_box);	
+  prepare_key(encryptKey, strlen( (char*)encryptKey), s_box);
+	rc4(buffer, buffer_len, s_box);	
   
-	unsigned char knownPlainText[] = "RSA2";
+	unsigned char knownPlainText[] = "Plain";
 	int known_p_len = strlen( (char*)knownPlainText);
 	unsigned char* knownKeyStream = (unsigned char*) malloc(sizeof(unsigned char) * known_p_len);
 	for (int i = 0; i < known_p_len; i++)
@@ -191,7 +182,7 @@ int main(int argc, char *argv[])
 		knownKeyStream[i] = knownPlainText[i] ^ buffer[i];
 	}
 
-	unsigned char * key=(unsigned char*)malloc( sizeof(unsigned char) * (MAX_KEY_LENGTH + 1));
+	unsigned char* key = (unsigned char*) malloc( sizeof(unsigned char) * (MAX_KEY_LENGTH + 1));
 
 	cudaEvent_t start,stop;
 	cudaError_t cudaStatus = cudaEventCreate( &start);
@@ -236,15 +227,8 @@ int main(int argc, char *argv[])
 	if (found)
 	{
 		printf("The right key has been found.The right key is:%s\n",key);
-    printf("%02x%02x%02x%02x%02x\n",key[0],key[1],key[2],key[3],key[4]);
 		prepare_key(key, strlen( (char*)key ), s_box);
 		rc4(buffer, buffer_len, s_box);
-    std::ofstream outf("decrypted");
-    outf.write( (char*)buffer, 700);
-    outf.close();
-    std::ofstream outk("outkey");
-    outk.write((char*) key, 5);
-    outk.close();
 		printf ("\nThe clear text is:\n%s\n", buffer);
 	}
 

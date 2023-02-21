@@ -18,13 +18,13 @@
 #define BLOCK_NUM 32
 #define MAX_THREAD_NUM 256
 
-// space is actually enough with 10, the reason for taking 20 is mainly to avoid bank conflicts
+// Space for keys and S-boxen in the shared memory
 #define MEMORY_PER_THREAD 276
 #define MAX_KEY_LENGTH 5 //max key length
 #define STATE_LEN	256
 #define MAX_KNOWN_STREAM_LEN 5
 
-__constant__ unsigned long long maxNum = 0x10000000000;
+__constant__ unsigned long long maxNum = 0x10000000000; //This should be KEY ** MAX_KEY_LENGTH
 __constant__ unsigned int maxKeyLen = MAX_KEY_LENGTH;
 __constant__ unsigned int keyNum = KEY;
 __constant__ unsigned int start = START_CHARACTER;
