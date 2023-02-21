@@ -32,14 +32,14 @@ __global__ void crackRc4Kernel(unsigned char*key, volatile bool *found)
 	for (unsigned long long i=0; i <= keyNum_per_thread; val += totalThreadNum, i++)
 	{
 		//Exit if found
-		if(*found) asm("exit;");
-		if(val==0) continue;
+		//if(*found) asm("exit;");
+		//if(val==0) continue;
 
 		//vKey is a pointer to share_memory
 		unsigned char* vKey = genKey((shared_mem + memory_per_thread * tIndex), val, &keyLen);
 
 		//Exit if found
-		if(*found) asm("exit;");
+		//if(*found) asm("exit;");
 
 		justIt=device_isKeyRight(vKey,keyLen,found);
 
@@ -47,15 +47,16 @@ __global__ void crackRc4Kernel(unsigned char*key, volatile bool *found)
 		if(*found) asm("exit;");
 
 		// the current key is not the requested one
-		if (!justIt) continue;
-
-		// Find the matching key, write it to Host, save the data, modify found, and exit the program
-		*found=true;
-		memcpy(key,vKey,keyLen);
-		key[keyLen]=0;
-		__threadfence();
-		asm("exit;");
-		break;
+		if (justIt)
+    {
+      // Find the matching key, write it to Host, save the data, modify found, and exit the program
+      *found=true;
+      memcpy(key,vKey,keyLen);
+      key[keyLen]=0;
+      __threadfence();
+      asm("exit;");
+      break;
+    }
 	}
 }
 
@@ -125,7 +126,7 @@ cudaError_t crackRc4WithCuda(unsigned char* knownKeyStream_host, int knownStream
   }
 
   //Initialize the state here, so we can just copy it
-  short counter=0;
+/*  short counter=0;
   unsigned char state_host[STATE_LEN];
   for(counter = 0; counter < STATE_LEN; counter++)          
   {
@@ -137,6 +138,7 @@ cudaError_t crackRc4WithCuda(unsigned char* knownKeyStream_host, int knownStream
 		cleanup(key_dev, found_dev);
     return cudaStatus;
   }
+  */
 
 	// Launch a kernel on the GPU with one thread for each element.
 	int threadNum=floor( (double) (prop.sharedMemPerBlock / MEMORY_PER_THREAD) ), share_memory = prop.sharedMemPerBlock;
