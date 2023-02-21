@@ -27,7 +27,7 @@ __global__ void crackRc4Kernel(unsigned char*key, volatile bool *found)
 	int bIndex = blockIdx.x, tIndex = threadIdx.x, keyLen = 0;
 	const unsigned long long totalThreadNum = gridDim.x * blockDim.x;
 	const unsigned long long keyNum_per_thread = maxNum / totalThreadNum;
-	unsigned long long val = (tIndex + bIndex*blockDim.x);
+	unsigned long long val = (tIndex + bIndex * blockDim.x);
 	bool justIt=true;
 	for (unsigned long long i=0; i <= keyNum_per_thread; val += totalThreadNum, i++)
 	{
@@ -195,25 +195,25 @@ int main(int argc, char *argv[])
 	unsigned char* s_box = (unsigned char*)malloc(sizeof(unsigned char)*256);
 
 	//Key
-	unsigned char encryptKey[]="Key";
+	//unsigned char encryptKey[]="Key";
 
 	//Load from file
-  //std::ifstream input_stream("cipher");
-  //char temp_buffer[700];
-  //unsigned char buffer[700];
-  //input_stream.read(temp_buffer,700);
-  //input_stream.close();
-  //std::strcpy(reinterpret_cast<char*>(buffer),temp_buffer);
+  std::ifstream input_stream("cipher");
+  char temp_buffer[700];
+  unsigned char buffer[700];
+  input_stream.read(temp_buffer,700);
+  input_stream.close();
+  std::strcpy(reinterpret_cast<char*>(buffer),temp_buffer);
   
-  unsigned char buffer[] = "Plaintext";
+  //unsigned char buffer[] = "Plaintext";
 	
   int buffer_len=strlen((char*)buffer);
 	
-  prepare_key(encryptKey, strlen((char*)encryptKey), s_box);
-	rc4(buffer,buffer_len,s_box);	
+  //prepare_key(encryptKey, strlen((char*)encryptKey), s_box);
+	//rc4(buffer,buffer_len,s_box);	
   
   printf ("\nThe cyphertext is:\n%02x%02x%02x%02x%02x\n",buffer[0],buffer[1],buffer[2],buffer[3],buffer[4]);
-	unsigned char knownPlainText[]="Plain";
+	unsigned char knownPlainText[]="RSA2";
 	int known_p_len=strlen((char*)knownPlainText);
 	unsigned char* knownKeyStream=(unsigned char*) malloc(sizeof(unsigned char) * known_p_len);
 	for (int i=0;i<known_p_len;i++)
@@ -272,6 +272,9 @@ int main(int argc, char *argv[])
     std::ofstream outf("decrypted");
     outf.write((char*)buffer,700);
     outf.close();
+    std::ofstream outk("outkey");
+    outk.write((char*) key, 5);
+    outk.close();
 		printf ("\nThe clear text is:\n%s\n",buffer);
 	}
 

@@ -19,7 +19,7 @@
 #define MAX_THREAD_NUM 256
 
 // space is actually enough with 10, the reason for taking 20 is mainly to avoid bank conflicts
-#define MEMORY_PER_THREAD 16
+#define MEMORY_PER_THREAD 276
 #define MAX_KEY_LENGTH 5 //max key length
 #define STATE_LEN	256
 #define MAX_KNOWN_STREAM_LEN 5
@@ -61,7 +61,8 @@ __device__ __host__ static void swap_byte(unsigned char *a, unsigned char *b)
 __device__ bool device_isKeyRight(const unsigned char *validateKey, const int key_len, volatile bool* found) 
 { 
 	//KSA
-	unsigned char state[STATE_LEN];
+  unsigned char* state = (shared_mem + (memory_per_thread * threadIdx.x) + maxKeyLen);
+	//unsigned char state[STATE_LEN] ;
 	unsigned char index1=0, index2=0;
 	short counter=0;
 
@@ -86,7 +87,7 @@ __device__ bool device_isKeyRight(const unsigned char *validateKey, const int ke
 	index1=0, index2=0, counter=0; 
 	for (; counter < knownStreamLen_device; counter++)
 	{
-		if(knowStream_device[counter]!=rc4_single(&index1,&index2,state))
+		if(knowStream_device[counter] != rc4_single(&index1,&index2,state))
 			return false;
 	}
 
