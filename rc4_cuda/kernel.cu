@@ -11,47 +11,37 @@ If the text and the ciphertext are dissimilar, we can get the value of some posi
 
 __device__ unsigned char* genKey(unsigned char* res, unsigned long long val, int* key_len)
 {
-	char p=maxKeyLen-1;
-	while (val&&p>=0) {
+	char p = maxKeyLen - 1;
+	while (val&&p >=0) {
 		res[p--] = (val - 1) % keyNum + start;
 		val = (val - 1) / keyNum;
 	}
-	*key_len=(maxKeyLen-p-1);
-	return res+p+1;
+	*key_len = (maxKeyLen - p - 1);
+	return res + p + 1;
 }
 
-__global__ void crackRc4Kernel(unsigned char*key, volatile bool *found)
+__global__ void crackRc4Kernel(unsigned char* key, volatile bool* found)
 {
-	if(*found) asm("exit;");
-
-	int bIndex = blockIdx.x, tIndex = threadIdx.x, keyLen = 0;
+	int keyLen = 0;
 	const unsigned long long totalThreadNum = gridDim.x * blockDim.x;
 	const unsigned long long keyNum_per_thread = maxNum / totalThreadNum;
-	unsigned long long val = (tIndex + bIndex * blockDim.x);
-	bool justIt=true;
+	unsigned long long val = (threadIdx.x + blockIdx.x * blockDim.x);
+	bool justIt;
 	for (unsigned long long i=0; i <= keyNum_per_thread; val += totalThreadNum, i++)
 	{
-		//Exit if found
-		//if(*found) asm("exit;");
-		//if(val==0) continue;
-
 		//vKey is a pointer to share_memory
-		unsigned char* vKey = genKey((shared_mem + memory_per_thread * tIndex), val, &keyLen);
-
-		//Exit if found
-		//if(*found) asm("exit;");
-
+		unsigned char* vKey = genKey((shared_mem + memory_per_thread * threadIdx.x), val, &keyLen);
 		justIt=device_isKeyRight(vKey,keyLen,found);
 
-		//Exit if found
+		//Exit if one of the other blocks found it
 		if(*found) asm("exit;");
 
 		// the current key is not the requested one
 		if (justIt)
     {
       // Find the matching key, write it to Host, save the data, modify found, and exit the program
-      *found=true;
-      memcpy(key,vKey,keyLen);
+      *found = true;
+      memcpy(key, vKey, keyLen);
       key[keyLen]=0;
       __threadfence();
       asm("exit;");
@@ -59,7 +49,6 @@ __global__ void crackRc4Kernel(unsigned char*key, volatile bool *found)
     }
 	}
 }
-
 
 void cleanup(unsigned char *key_dev, bool* found_dev)
 {
@@ -86,7 +75,7 @@ cudaError_t crackRc4WithCuda(unsigned char* knownKeyStream_host, int knownStream
 	cudaDeviceProp prop;
 	cudaGetDeviceProperties(&prop, 0);
 
-	cudaStatus = cudaMalloc((void**)&key_dev, (MAX_KEY_LENGTH+1) * sizeof(unsigned char));
+	cudaStatus = cudaMalloc((void**)&key_dev, (MAX_KEY_LENGTH + 1) * sizeof(unsigned char));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed!");
 		cudaFree(key_dev);
@@ -125,35 +114,15 @@ cudaError_t crackRc4WithCuda(unsigned char* knownKeyStream_host, int knownStream
     return cudaStatus;
   }
 
-  //Initialize the state here, so we can just copy it
-/*  short counter=0;
-  unsigned char state_host[STATE_LEN];
-  for(counter = 0; counter < STATE_LEN; counter++)          
-  {
-		state_host[counter] = counter;
-  }
-  cudaStatus = cudaMemcpyToSymbol(initialArray_device, state_host, sizeof(unsigned char) * STATE_LEN);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpyToSymbol streamlen failed!");
-		cleanup(key_dev, found_dev);
-    return cudaStatus;
-  }
-  */
-
 	// Launch a kernel on the GPU with one thread for each element.
-	int threadNum=floor( (double) (prop.sharedMemPerBlock / MEMORY_PER_THREAD) ), share_memory = prop.sharedMemPerBlock;
+	int threadNum = floor( (double) (prop.sharedMemPerBlock / MEMORY_PER_THREAD) ), share_memory = prop.sharedMemPerBlock;
 	if(threadNum > MAX_THREAD_NUM )
   {
 		threadNum = MAX_THREAD_NUM;
 		share_memory = threadNum * MEMORY_PER_THREAD;
 	}
 
-  //dim3 threadblock;
-  //threadblock.x = (int)floor(sqrt(threadNum));
-  //threadblock.y = threadNum / threadblock.x;
-  cudaProfilerStart();
 	crackRc4Kernel<<<BLOCK_NUM, threadNum, share_memory>>>(key_dev, found_dev);
-  cudaProfilerStop();
 
 	// Check for any errors launching the kernel
 	cudaStatus = cudaGetLastError();
@@ -214,30 +183,29 @@ int main(int argc, char *argv[])
   //prepare_key(encryptKey, strlen((char*)encryptKey), s_box);
 	//rc4(buffer,buffer_len,s_box);	
   
-  printf ("\nThe cyphertext is:\n%02x%02x%02x%02x%02x\n",buffer[0],buffer[1],buffer[2],buffer[3],buffer[4]);
-	unsigned char knownPlainText[]="RSA2";
-	int known_p_len=strlen((char*)knownPlainText);
-	unsigned char* knownKeyStream=(unsigned char*) malloc(sizeof(unsigned char) * known_p_len);
-	for (int i=0;i<known_p_len;i++)
+	unsigned char knownPlainText[] = "RSA2";
+	int known_p_len = strlen( (char*)knownPlainText);
+	unsigned char* knownKeyStream = (unsigned char*) malloc(sizeof(unsigned char) * known_p_len);
+	for (int i = 0; i < known_p_len; i++)
 	{
-		knownKeyStream[i]=knownPlainText[i]^buffer[i];
+		knownKeyStream[i] = knownPlainText[i] ^ buffer[i];
 	}
 
-	unsigned char * key=(unsigned char*)malloc( sizeof(unsigned char) * (MAX_KEY_LENGTH+1));
+	unsigned char * key=(unsigned char*)malloc( sizeof(unsigned char) * (MAX_KEY_LENGTH + 1));
 
 	cudaEvent_t start,stop;
-	cudaError_t cudaStatus=cudaEventCreate(&start);
+	cudaError_t cudaStatus = cudaEventCreate( &start);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaEventCreate(start) failed!");
 		return 1;
 	}
-	cudaStatus=cudaEventCreate(&stop);
+	cudaStatus=cudaEventCreate( &stop);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaEventCreate(stop) failed!");
 		return 1;
 	}
 
-	cudaStatus=cudaEventRecord(start,0);
+	cudaStatus=cudaEventRecord(start, 0);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaEventRecord(start) failed!");
 		return 1;
@@ -262,22 +230,22 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	float useTime;
-	cudaStatus=cudaEventElapsedTime(&useTime,start,stop);
-	useTime/=1000;
+	cudaStatus = cudaEventElapsedTime(&useTime,start,stop);
+	useTime /= 1000;
 	printf("The time we used was:%fs\n",useTime);
 	if (found)
 	{
 		printf("The right key has been found.The right key is:%s\n",key);
     printf("%02x%02x%02x%02x%02x\n",key[0],key[1],key[2],key[3],key[4]);
-		prepare_key(key,strlen((char*)key),s_box);
-		rc4(buffer,buffer_len,s_box);
+		prepare_key(key, strlen( (char*)key ), s_box);
+		rc4(buffer, buffer_len, s_box);
     std::ofstream outf("decrypted");
-    outf.write((char*)buffer,700);
+    outf.write( (char*)buffer, 700);
     outf.close();
     std::ofstream outk("outkey");
     outk.write((char*) key, 5);
     outk.close();
-		printf ("\nThe clear text is:\n%s\n",buffer);
+		printf ("\nThe clear text is:\n%s\n", buffer);
 	}
 
 	cudaEventDestroy(start);
