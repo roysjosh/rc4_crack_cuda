@@ -1,68 +1,65 @@
 #include "rc4.h"
+#include "cuda_profiler_api.h"
+
 /************************************************************************/
 /* 
-本来的思路是每次获取一个密钥，解密对应的密文，看得到的明文是否满足某个条件，
-但是过程中需要的中间变量太多了，转念一想，明文和密文是异或的关系，那么已知明
-文和密文异或的话就能得到密钥流的某些位置的值。这样就可以省去不少空间~~
+The original idea is to obtain one key at a time, decrypt the corresponding ciphertext, and see if the resulting plaintext satisfies a certain condition.
+But the process requires too many intermediate variables, and on second thought, the plaintext and ciphertext are heterogeneous or related, so the known plaintext
+If the text and the ciphertext are dissimilar, we can get the value of some position of the key stream. This saves a lot of space~~
 */
 /************************************************************************/
 
-__device__ unsigned char* genKey(unsigned char*res,unsigned long long val,int*key_len)
+__device__ unsigned char* genKey(unsigned char* res, unsigned long long val, int* key_len)
 {
-	char p=maxKeyLen-1;
-	while (val&&p>=0) {
+	char p = maxKeyLen - 1;
+	while (val&&p >=0) {
 		res[p--] = (val - 1) % keyNum + start;
 		val = (val - 1) / keyNum;
 	}
-	*key_len=(maxKeyLen-p-1);
-	return res+p+1;
+	*key_len = (maxKeyLen - p - 1);
+	return res + p + 1;
 }
 
-__global__ void crackRc4Kernel(unsigned char*key, volatile bool *found)
+__global__ void crackRc4Kernel(unsigned char* key, volatile bool* found)
 {
-	if(*found) asm("exit;");
-
-	int bdx=blockIdx.x, tid=threadIdx.x, keyLen=0;
-	const unsigned long long totalThreadNum=gridDim.x*blockDim.x;
-	const unsigned long long keyNum_per_thread=maxNum/totalThreadNum;
-//	unsigned long long val=(tid+bdx*blockDim.x)*keyNum_per_thread;
-	unsigned long long val=(tid+bdx*blockDim.x);
-	bool justIt=true;
-	for (unsigned long long i=0; i<=keyNum_per_thread; val+=totalThreadNum,i++)
+	int keyLen = 0;
+	const unsigned long long totalThreadNum = gridDim.x * blockDim.x;
+	const unsigned long long keyNum_per_thread = maxNum / totalThreadNum;
+	unsigned long long val = (threadIdx.x + blockIdx.x * blockDim.x);
+	bool justIt;
+	for (unsigned long long i=0; i <= keyNum_per_thread; val += totalThreadNum, i++)
 	{
-		//找到的话退出
-		if(*found) asm("exit;");
-		if(val==0) continue;
-
-		//vKey是share_memory的一个指针
-		unsigned char*vKey=genKey((shared_mem+memory_per_thread*tid),val,&keyLen);
-
-		//找到的话退出
-		if(*found) asm("exit;");
-
+		//vKey is a pointer to share_memory
+		unsigned char* vKey = genKey((shared_mem + memory_per_thread * threadIdx.x), val, &keyLen);
 		justIt=device_isKeyRight(vKey,keyLen,found);
 
-		//找到的话退出
+		//Exit if one of the other blocks found it
 		if(*found) asm("exit;");
 
-		//当前密钥不是所求
-		if (!justIt) continue;
-
-		//找到匹配密钥，写到Host，保存数据,修改found,退出程序
-		*found=true;
-		memcpy(key,vKey,keyLen);
-		key[keyLen]=0;
-		__threadfence();
-		asm("exit;");
-		break;
+		// the current key is not the requested one
+		if (justIt)
+    {
+      // Find the matching key, write it to Host, save the data, modify found, and exit the program
+      *found = true;
+      memcpy(key, vKey, keyLen);
+      key[keyLen]=0;
+      __threadfence();
+      asm("exit;");
+      break;
+    }
 	}
+}
+
+void cleanup(unsigned char *key_dev, bool* found_dev)
+{
+  cudaFree(key_dev);
+  cudaFree(found_dev);
+  return;
 }
 
 // Helper function for using CUDA to add vectors in parallel.
 cudaError_t crackRc4WithCuda(unsigned char* knownKeyStream_host, int knownStreamLen_host, unsigned char*key, bool*found)
 {
-	unsigned char *key_dev ;
-	bool* found_dev;
 	cudaError_t cudaStatus;
 
 
@@ -70,123 +67,136 @@ cudaError_t crackRc4WithCuda(unsigned char* knownKeyStream_host, int knownStream
 	cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
-		goto Error;
+    return cudaStatus;
 	}
+
+	unsigned char *key_dev ;
 
 	cudaDeviceProp prop;
 	cudaGetDeviceProperties(&prop, 0);
 
-	cudaStatus = cudaMalloc((void**)&key_dev, (MAX_KEY_LENGTH+1) * sizeof(unsigned char));
+	cudaStatus = cudaMalloc((void**)&key_dev, (MAX_KEY_LENGTH + 1) * sizeof(unsigned char));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed!");
-		goto Error;
-	}
+		cudaFree(key_dev);
+    return cudaStatus;
+  }
+
+  bool* found_dev;
 
 	cudaStatus = cudaMalloc((void**)&found_dev, sizeof(bool));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed!");
-		goto Error;
-	}
+		cleanup(key_dev, found_dev);
+    return cudaStatus;
+  }
 
-	//检验是否找到密钥变量
+	//Check if the key variable is found
 	cudaStatus = cudaMemcpy(found_dev, found, sizeof(bool), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
+		cleanup(key_dev, found_dev);
+    return cudaStatus;
+  }
 
-	//复制常量内存
-	cudaStatus = cudaMemcpyToSymbol(knowStream_device, knownKeyStream_host,sizeof(unsigned char)*knownStreamLen_host);
+	//Copy constant memory
+	cudaStatus = cudaMemcpyToSymbol(knowStream_device, knownKeyStream_host, sizeof(unsigned char) *knownStreamLen_host);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpyToSymbol failed!");
-		goto Error;
-	}
+		fprintf(stderr, "cudaMemcpyToSymbol stream failed!");
+		cleanup(key_dev, found_dev);
+    return cudaStatus;
+  }
 
-	cudaStatus = cudaMemcpyToSymbol((const void *)&knownStreamLen_device,(const void *)&knownStreamLen_host,sizeof(unsigned char));
+	cudaStatus = cudaMemcpyToSymbol((const void *) &knownStreamLen_device, (const void *) &knownStreamLen_host, sizeof(unsigned char));
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpyToSymbol failed!");
-		goto Error;
-	}
+		fprintf(stderr, "cudaMemcpyToSymbol streamlen failed!");
+		cleanup(key_dev, found_dev);
+    return cudaStatus;
+  }
 
 	// Launch a kernel on the GPU with one thread for each element.
-	int threadNum=floor((double)(prop.sharedMemPerBlock/MEMEORY_PER_THREAD)),share_memory=prop.sharedMemPerBlock;
-	if(threadNum>MAX_THREAD_NUM){
-		threadNum=MAX_THREAD_NUM;
-		share_memory=threadNum*MEMEORY_PER_THREAD;
+	int threadNum = floor( (double) (prop.sharedMemPerBlock / MEMORY_PER_THREAD) ), share_memory = prop.sharedMemPerBlock;
+	if(threadNum > MAX_THREAD_NUM )
+  {
+		threadNum = MAX_THREAD_NUM;
+		share_memory = threadNum * MEMORY_PER_THREAD;
 	}
-	crackRc4Kernel<<<BLOCK_NUM, threadNum, share_memory>>>(key_dev,found_dev);
+
+	crackRc4Kernel<<<BLOCK_NUM, threadNum, share_memory>>>(key_dev, found_dev);
 
 	// Check for any errors launching the kernel
 	cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
-		goto Error;
-	}
+		cleanup(key_dev, found_dev);
+    return cudaStatus;
+  }
 
 	// cudaDeviceSynchronize waits for the kernel to finish, and returns
 	// any errors encountered during the launch.
 	cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
-		goto Error;
-	}
+		cleanup(key_dev, found_dev);
+    return cudaStatus;
+  }
 
 	// Copy output vector from GPU buffer to host memory.
 	cudaStatus = cudaMemcpy(key, key_dev, (MAX_KEY_LENGTH+1) * sizeof(unsigned char), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
+		cleanup(key_dev, found_dev);
+    return cudaStatus;
+  }
 
 	// Copy output vector from GPU buffer to host memory.
 	cudaStatus = cudaMemcpy(found, found_dev,  sizeof(bool), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy failed!");
-		goto Error;
-	}
-
-Error:
-	cudaFree(key_dev);
-	cudaFree(found_dev);
+		cleanup(key_dev, found_dev);
+    return cudaStatus;
+  }
 
 	return cudaStatus;
 }
 
 int main(int argc, char *argv[])
 {
-//	printf("%c",0x7d);
-	unsigned char* s_box = (unsigned char*)malloc(sizeof(unsigned char)*256);
-	//密钥
-	unsigned char encryptKey[]="!!!}";
-	//明文
-	unsigned char buffer[] = "Life is a chain of moments of enjoyment, not only about survivalO(∩_∩)O~";
-	int buffer_len=strlen((char*)buffer);
-	prepare_key(encryptKey,strlen((char*)encryptKey),s_box);
-	rc4(buffer,buffer_len,s_box);	
 
-	unsigned char knownPlainText[]="Life";
-	int known_p_len=strlen((char*)knownPlainText);
-	unsigned char* knownKeyStream=(unsigned char*)malloc(sizeof(unsigned char)*known_p_len);
-	for (int i=0;i<known_p_len;i++)
+	unsigned char* s_box = (unsigned char*)malloc(sizeof(unsigned char)*256);
+
+	//Key
+	unsigned char encryptKey[] = "KeyKe";
+  unsigned char buffer[] = "Plaintext";
+	
+  int buffer_len = strlen( (char*)buffer);
+	
+  prepare_key(encryptKey, strlen( (char*)encryptKey), s_box);
+	rc4(buffer, buffer_len, s_box);	
+  
+	unsigned char knownPlainText[] = "Plain";
+	int known_p_len = strlen( (char*)knownPlainText);
+	unsigned char* knownKeyStream = (unsigned char*) malloc(sizeof(unsigned char) * known_p_len);
+	for (int i = 0; i < known_p_len; i++)
 	{
-		knownKeyStream[i]=knownPlainText[i]^buffer[i];
+		knownKeyStream[i] = knownPlainText[i] ^ buffer[i];
 	}
 
-	unsigned char * key=(unsigned char*)malloc( sizeof(unsigned char) * (MAX_KEY_LENGTH+1));
+	unsigned char* key = (unsigned char*) malloc( sizeof(unsigned char) * (MAX_KEY_LENGTH + 1));
 
 	cudaEvent_t start,stop;
-	cudaError_t cudaStatus=cudaEventCreate(&start);
+	cudaError_t cudaStatus = cudaEventCreate( &start);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaEventCreate(start) failed!");
 		return 1;
 	}
-	cudaStatus=cudaEventCreate(&stop);
+	cudaStatus=cudaEventCreate( &stop);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaEventCreate(stop) failed!");
 		return 1;
 	}
 
-	cudaStatus=cudaEventRecord(start,0);
+	cudaStatus=cudaEventRecord(start, 0);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaEventRecord(start) failed!");
 		return 1;
@@ -211,15 +221,15 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	float useTime;
-	cudaStatus=cudaEventElapsedTime(&useTime,start,stop);
-	useTime/=1000;
+	cudaStatus = cudaEventElapsedTime(&useTime,start,stop);
+	useTime /= 1000;
 	printf("The time we used was:%fs\n",useTime);
 	if (found)
 	{
 		printf("The right key has been found.The right key is:%s\n",key);
-		prepare_key(key,strlen((char*)key),s_box);
-		rc4(buffer,buffer_len,s_box);
-		printf ("\nThe clear text is:\n%s\n",buffer);
+		prepare_key(key, strlen( (char*)key ), s_box);
+		rc4(buffer, buffer_len, s_box);
+		printf ("\nThe clear text is:\n%s\n", buffer);
 	}
 
 	cudaEventDestroy(start);
