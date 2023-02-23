@@ -1,5 +1,4 @@
 #include "rc4.h"
-#include "cuda_profiler_api.h"
 
 /************************************************************************/
 /* 
@@ -167,14 +166,14 @@ int main(int argc, char *argv[])
 
 	//Key
 	unsigned char encryptKey[] = "KeyKe";
-  unsigned char buffer[] = "Plaintext";
+  unsigned char buffer[] = "In cryptography, RC4 (Rivest Cipher 4, also known as ARC4 or ARCFOUR, meaning Alleged RC4, see below) is a stream cipher.";
 	
   int buffer_len = strlen( (char*)buffer);
 	
   prepare_key(encryptKey, strlen( (char*)encryptKey), s_box);
 	rc4(buffer, buffer_len, s_box);	
   
-	unsigned char knownPlainText[] = "Plain";
+	unsigned char knownPlainText[] = "In cr";
 	int known_p_len = strlen( (char*)knownPlainText);
 	unsigned char* knownKeyStream = (unsigned char*) malloc(sizeof(unsigned char) * known_p_len);
 	for (int i = 0; i < known_p_len; i++)
