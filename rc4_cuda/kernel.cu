@@ -8,15 +8,15 @@ If the text and the ciphertext are dissimilar, we can get the value of some posi
 */
 /************************************************************************/
 
-__device__ unsigned char* genKey(unsigned char* res, unsigned long long val, int* key_len)
+__device__ unsigned char* genKey(unsigned char* keyStartAddr, unsigned long long myKeyNum, int* key_len)
 {
 	char p = maxKeyLen - 1;
-	while (val&&p >=0) {
-		res[p--] = (val - 1) % keyNum + start;
-		val = (val - 1) / keyNum;
+	while (myKeyNum&&p >=0) {
+		keyStartAddr[p--] = (myKeyNum - 1) % keyNum + start;
+		myKeyNum = (myKeyNum - 1) / keyNum;
 	}
 	*key_len = (maxKeyLen - p - 1);
-	return res + p + 1;
+	return keyStartAddr + p + 1;
 }
 
 __global__ void crackRc4Kernel(unsigned char* key, volatile bool* found)
@@ -24,12 +24,12 @@ __global__ void crackRc4Kernel(unsigned char* key, volatile bool* found)
 	int keyLen = 0;
 	const unsigned long long totalThreadNum = gridDim.x * blockDim.x;
 	const unsigned long long keyNum_per_thread = maxNum / totalThreadNum;
-	unsigned long long val = (threadIdx.x + blockIdx.x * blockDim.x);
+	unsigned long long myKeyNum = (threadIdx.x + blockIdx.x * blockDim.x);
 	bool justIt;
-	for (unsigned long long i=0; i <= keyNum_per_thread; val += totalThreadNum, i++)
+	for (unsigned long long i=0; i <= keyNum_per_thread; myKeyNum += totalThreadNum, i++)
 	{
 		//vKey is a pointer to share_memory
-		unsigned char* vKey = genKey((shared_mem + memory_per_thread * threadIdx.x), val, &keyLen);
+		unsigned char* vKey = genKey((shared_mem + memory_per_thread * threadIdx.x), myKeyNum, &keyLen);
 		justIt=device_isKeyRight(vKey,keyLen,found);
 
 		//Exit if one of the other blocks found it
@@ -165,7 +165,7 @@ int main(int argc, char *argv[])
 	unsigned char* s_box = (unsigned char*)malloc(sizeof(unsigned char)*256);
 
 	//Key
-	unsigned char encryptKey[] = "KeyKe";
+	unsigned char encryptKey[] = "KeyK";
   unsigned char buffer[] = "In cryptography, RC4 (Rivest Cipher 4, also known as ARC4 or ARCFOUR, meaning Alleged RC4, see below) is a stream cipher.";
 	
   int buffer_len = strlen( (char*)buffer);
