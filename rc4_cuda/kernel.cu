@@ -8,15 +8,23 @@ If the text and the ciphertext are dissimilar, we can get the value of some posi
 */
 /************************************************************************/
 
-__device__ unsigned char* genKey(unsigned char* keyStartAddr, unsigned long long myKeyNum, int* key_len)
+__device__ void genKey(unsigned char* keyStartAddr, unsigned long long myKeyNum, int* key_len)
 {
-	char p = maxKeyLen - 1;
-	while (myKeyNum&&p >=0) {
+/*	char p = maxKeyLen - 1;
+	while (myKeyNum && p >=0) {
 		keyStartAddr[p--] = (myKeyNum - 1) % keyNum + start;
 		myKeyNum = (myKeyNum - 1) / keyNum;
 	}
 	*key_len = (maxKeyLen - p - 1);
 	return keyStartAddr + p + 1;
+*/
+  size_t i = 0;
+  while (myKeyNum && i < maxKeyLen)
+  {
+    keyStartAddr[i++] = (myKeyNum - 1) % keyNum + start;
+    myKeyNum = (myKeyNum - 1) / keyNum;
+  }
+  *key_len = (i);
 }
 
 __global__ void crackRc4Kernel(unsigned char* key, volatile bool* found)
@@ -26,10 +34,11 @@ __global__ void crackRc4Kernel(unsigned char* key, volatile bool* found)
 	const unsigned long long keyNum_per_thread = maxNum / totalThreadNum;
 	unsigned long long myKeyNum = (threadIdx.x + blockIdx.x * blockDim.x);
 	bool justIt;
-	for (unsigned long long i=0; i <= keyNum_per_thread; myKeyNum += totalThreadNum, i++)
+	for (unsigned long long i=0; i <= keyNum_per_thread; myKeyNum += totalThreadNum, ++i)
 	{
 		//vKey is a pointer to share_memory
-		unsigned char* vKey = genKey((shared_mem + memory_per_thread * threadIdx.x), myKeyNum, &keyLen);
+		unsigned char* vKey = (shared_mem + memory_per_thread * threadIdx.x);
+    genKey(vKey, myKeyNum, &keyLen);
 		justIt=device_isKeyRight(vKey,keyLen,found);
 
 		//Exit if one of the other blocks found it
