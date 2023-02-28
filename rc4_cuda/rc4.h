@@ -20,17 +20,19 @@
 
 // Space for keys and S-boxen in the shared memory
 #define MEMORY_PER_THREAD 276
-#define MAX_KEY_LENGTH 5 //max key length
+#define MAX_KEY_LENGTH 16 //max key length
 #define STATE_LEN	256
 #define MAX_KNOWN_STREAM_LEN 5
 
-__constant__ unsigned long long maxNum = 0x10000000000; //This should be KEY ** MAX_KEY_LENGTH
+__constant__ unsigned long long maxNum = 0x100000000; //This should be KEY ** MAX_KEY_LENGTH
 __constant__ unsigned int maxKeyLen = MAX_KEY_LENGTH;
 __constant__ unsigned int keyNum = KEY;
 __constant__ unsigned int start = START_CHARACTER;
 __constant__ unsigned int memory_per_thread = MEMORY_PER_THREAD;
 __constant__ unsigned char knownStreamLen_device;
 __constant__ unsigned char knowStream_device[MAX_KNOWN_STREAM_LEN];
+
+const size_t host_max_key = MAX_KEY_LENGTH;
 
 
 extern __shared__ unsigned char shared_mem[];

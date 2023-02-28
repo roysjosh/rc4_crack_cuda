@@ -39,6 +39,12 @@ __global__ void crackRc4Kernel(unsigned char* key, volatile bool* found)
 		//vKey is a pointer to share_memory
 		unsigned char* vKey = (shared_mem + memory_per_thread * threadIdx.x);
     genKey(vKey, myKeyNum, &keyLen);
+    // Pad with nulls
+    while (keyLen < maxKeyLen)
+    {
+      vKey[keyLen++] = '\x00';
+    }
+
 		justIt=device_isKeyRight(vKey,keyLen,found);
 
 		//Exit if one of the other blocks found it
@@ -174,12 +180,17 @@ int main(int argc, char *argv[])
 	unsigned char* s_box = (unsigned char*)malloc(sizeof(unsigned char)*256);
 
 	//Key
-	unsigned char encryptKey[] = "KeyK";
+	unsigned char encryptKey[host_max_key] = "KeyK";
   unsigned char buffer[] = "In cryptography, RC4 (Rivest Cipher 4, also known as ARC4 or ARCFOUR, meaning Alleged RC4, see below) is a stream cipher.";
+  size_t buffer_len = strlen( (char*)buffer);
+  size_t key_len = strlen( (char*)encryptKey);
+  // Pad the key
+  while (key_len < host_max_key)
+  {
+    encryptKey[key_len++] = '\x00';
+  }
 	
-  int buffer_len = strlen( (char*)buffer);
-	
-  prepare_key(encryptKey, strlen( (char*)encryptKey), s_box);
+  prepare_key(encryptKey, key_len, s_box);
 	rc4(buffer, buffer_len, s_box);	
   
 	unsigned char knownPlainText[] = "In cr";
@@ -235,7 +246,7 @@ int main(int argc, char *argv[])
 	if (found)
 	{
 		printf("The right key has been found.The right key is:%s\n",key);
-		prepare_key(key, strlen( (char*)key ), s_box);
+		prepare_key(key, key_len, s_box);
 		rc4(buffer, buffer_len, s_box);
 		printf ("\nThe clear text is:\n%s\n", buffer);
 	}
