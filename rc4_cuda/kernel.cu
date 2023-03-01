@@ -40,10 +40,14 @@ __global__ void crackRc4Kernel(unsigned char* key, volatile bool* found)
 		unsigned char* vKey = (shared_mem + memory_per_thread * threadIdx.x);
     genKey(vKey, myKeyNum, &keyLen);
     // Pad with nulls
-    while (keyLen < maxKeyLen)
-    {
-      vKey[keyLen++] = '\x00';
-    }
+    //unsigned char salt[12] = "\x1d\xde\x39\x7a\x08\xbf\x2f\x22\x7d\x79\x4d";
+    //"\x4d\x79\x7d\x22\x2f\xbf\x08\x7a\x39\xde\x1d"
+    memcpy(vKey + keyLen, "\x1d\xde\x39\x7a\x08\xbf\x2f\x22\x7d\x79\x4d", 11);
+    keyLen = maxKeyLen;
+    //while (keyLen < maxKeyLen)
+    //{
+    //  vKey[keyLen++] = '\x00';
+    //}
 
 		justIt=device_isKeyRight(vKey,keyLen,found);
 
@@ -180,21 +184,34 @@ int main(int argc, char *argv[])
 	unsigned char* s_box = (unsigned char*)malloc(sizeof(unsigned char)*256);
 
 	//Key
-	unsigned char encryptKey[host_max_key] = "KeyK";
-  unsigned char buffer[] = "In cryptography, RC4 (Rivest Cipher 4, also known as ARC4 or ARCFOUR, meaning Alleged RC4, see below) is a stream cipher.";
+	/*
+  unsigned char encryptKey[] = "KeyKe\x1d\xde\x39\x7a\x08\xbf\x2f\x22\x7d\x79\x4d";
+  unsigned char buffer[] = "RSA2foobar";
   size_t buffer_len = strlen( (char*)buffer);
   size_t key_len = strlen( (char*)encryptKey);
   // Pad the key
-  while (key_len < host_max_key)
-  {
-    encryptKey[key_len++] = '\x00';
-  }
+  //while (key_len < host_max_key)
+  //{
+  //  encryptKey[key_len++] = '\x00';
+  //}
+  //memcpy(encryptKey + key_len, "e\x4d\x79\x7d\x22\x2f\xbf\x08\x7a\x39\xde\x1d", 12);
 	
   prepare_key(encryptKey, key_len, s_box);
 	rc4(buffer, buffer_len, s_box);	
+  */
   
-	unsigned char knownPlainText[] = "In cr";
-	int known_p_len = strlen( (char*)knownPlainText);
+       //Load from file
+  std::ifstream input_stream("cipher");
+  char temp_buffer[700];
+  unsigned char buffer[700];
+  input_stream.read(temp_buffer, 700);
+  input_stream.close();
+  std::strcpy(reinterpret_cast<char *>(buffer), temp_buffer);
+  size_t buffer_len = 700;
+  size_t key_len = 16;
+
+  unsigned char knownPlainText[] = "RSA2\x88\x00\x00\x00";
+	int known_p_len = 8;
 	unsigned char* knownKeyStream = (unsigned char*) malloc(sizeof(unsigned char) * known_p_len);
 	for (int i = 0; i < known_p_len; i++)
 	{
@@ -243,15 +260,24 @@ int main(int argc, char *argv[])
 	cudaStatus = cudaEventElapsedTime(&useTime,start,stop);
 	useTime /= 1000;
 	printf("The time we used was:%fs\n",useTime);
-	if (found)
-	{
-		printf("The right key has been found.The right key is:%s\n",key);
-		prepare_key(key, key_len, s_box);
-		rc4(buffer, buffer_len, s_box);
-		printf ("\nThe clear text is:\n%s\n", buffer);
-	}
+  if (found)
+  {
+    printf("The right key has been found.The right key is:%s\n", key);
+    printf("%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x\n", key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7], key[8], key[9], key[10], key[11], key[12], key[13], key[14], key[15]);
+    prepare_key(key, key_len, s_box);
 
-	cudaEventDestroy(start);
+    rc4(buffer, buffer_len, s_box);
+
+    std::ofstream outf("decrypted");
+    outf.write((char *)buffer, 700);
+    outf.close();
+    std::ofstream outk("outkey");
+    outk.write((char *)key, key_len);
+    outk.close();
+    printf("\nThe clear text is:\n%s\n", buffer);
+  }
+
+  cudaEventDestroy(start);
 	cudaEventDestroy(stop);
 
 	free(key);

@@ -22,9 +22,9 @@
 #define MEMORY_PER_THREAD 276
 #define MAX_KEY_LENGTH 16 //max key length
 #define STATE_LEN	256
-#define MAX_KNOWN_STREAM_LEN 5
+#define MAX_KNOWN_STREAM_LEN 8
 
-__constant__ unsigned long long maxNum = 0x100000000; //This should be KEY ** MAX_KEY_LENGTH
+__constant__ unsigned long long maxNum = 0x10000000000; //This should be KEY ** MAX_KEY_LENGTH
 __constant__ unsigned int maxKeyLen = MAX_KEY_LENGTH;
 __constant__ unsigned int keyNum = KEY;
 __constant__ unsigned int start = START_CHARACTER;
