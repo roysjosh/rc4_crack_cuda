@@ -20,9 +20,9 @@
 
 // Space for keys and S-boxen in the shared memory
 #define MEMORY_PER_THREAD 276
-#define MAX_KEY_LENGTH 5 //max key length
+#define MAX_KEY_LENGTH 16 //max key length
 #define STATE_LEN	256
-#define MAX_KNOWN_STREAM_LEN 5
+#define MAX_KNOWN_STREAM_LEN 8
 
 __constant__ unsigned long long maxNum = 0x10000000000; //This should be KEY ** MAX_KEY_LENGTH
 __constant__ unsigned int maxKeyLen = MAX_KEY_LENGTH;
@@ -31,16 +31,22 @@ __constant__ unsigned int start = START_CHARACTER;
 __constant__ unsigned int memory_per_thread = MEMORY_PER_THREAD;
 __constant__ unsigned char knownStreamLen_device;
 __constant__ unsigned char knowStream_device[MAX_KNOWN_STREAM_LEN];
+__constant__ unsigned char saltLen_device;
+__constant__ unsigned char salt_device[MAX_KEY_LENGTH];
+
+
+const size_t host_max_key = MAX_KEY_LENGTH;
+const size_t host_max_known = MAX_KNOWN_STREAM_LEN;
 
 
 extern __shared__ unsigned char shared_mem[];
 
 __device__ __host__ unsigned char rc4_single(unsigned char* x, unsigned char* y, unsigned char* s_box);
 __device__ __host__ static void swap_byte(unsigned char *a, unsigned char *b);
-__device__ bool device_isKeyRight(const unsigned char *known_stream, int known_len,unsigned char *validateKey,int key_len);
+//__device__ bool device_isKeyRight(const unsigned char *known_stream, int known_len,unsigned char *validateKey,int key_len);
 __device__ __host__ unsigned char rc4_single(unsigned char*x, unsigned char * y, unsigned char *s_box);
-void prepare_key(unsigned char *key_data_ptr, int key_data_len,unsigned char *s_box);
-void rc4(unsigned char *buffer_ptr, int buffer_len, unsigned char *s_box);
+void prepare_key(unsigned char *key_data_ptr, size_t key_data_len,unsigned char *s_box);
+void rc4(unsigned char *buffer_ptr, size_t buffer_len, unsigned char *s_box);
 /************************************************************************/
 /* the data type is unsigned char,so the %256 is no necessary           */
 /************************************************************************/
@@ -57,7 +63,7 @@ __device__ __host__ static void swap_byte(unsigned char *a, unsigned char *b)
 	*b = swapByte; 
 }
 
-__device__ bool device_isKeyRight(const unsigned char *validateKey, const int key_len, volatile bool* found) 
+__device__ bool device_isKeyRight(const unsigned char *validateKey, const int key_len) 
 { 
 	//KSA
   unsigned char* state = (shared_mem + (memory_per_thread * threadIdx.x) + maxKeyLen);
@@ -119,10 +125,10 @@ __device__ __host__ unsigned char rc4_single(unsigned char* x, unsigned char* y,
  *
  * \return void
 **/
-void prepare_key(unsigned char *key_data_ptr, int key_data_len, unsigned char* s_box) 
+void prepare_key(unsigned char *key_data_ptr, size_t key_data_len, unsigned char* s_box) 
 { 
 	unsigned char index1 = 0, index2 = 0, *state; 
-	short counter;    
+	short counter; //FIXME figure out why this was a short before
 
 	state = &s_box[0];        
 	for(counter = 0; counter < STATE_LEN; counter++)          
@@ -136,7 +142,7 @@ void prepare_key(unsigned char *key_data_ptr, int key_data_len, unsigned char* s
 	}      
 } 
 
-void rc4(unsigned char *buffer_ptr, int buffer_len, unsigned char *s_box) 
+void rc4(unsigned char *buffer_ptr, size_t buffer_len, unsigned char *s_box) 
 {  
 	unsigned char x = 0, y = 0, *state;
 	short counter; 
