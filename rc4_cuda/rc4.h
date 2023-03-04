@@ -8,8 +8,6 @@
 #include <fstream>
 #include <time.h>
 #include <math.h>
-//Use wingetopt for portability for now
-#include "../wingetopt/src/getopt.h"
 #include <Windows.h>
 
 //This is binary so all characters are valid
@@ -35,16 +33,17 @@ __constant__ unsigned char knownStreamLen_device;
 __constant__ unsigned char knowStream_device[MAX_KNOWN_STREAM_LEN];
 
 const size_t host_max_key = MAX_KEY_LENGTH;
+const size_t host_max_known = MAX_KNOWN_STREAM_LEN;
 
 
 extern __shared__ unsigned char shared_mem[];
 
 __device__ __host__ unsigned char rc4_single(unsigned char* x, unsigned char* y, unsigned char* s_box);
 __device__ __host__ static void swap_byte(unsigned char *a, unsigned char *b);
-__device__ bool device_isKeyRight(const unsigned char *known_stream, int known_len,unsigned char *validateKey,int key_len);
+//__device__ bool device_isKeyRight(const unsigned char *known_stream, int known_len,unsigned char *validateKey,int key_len);
 __device__ __host__ unsigned char rc4_single(unsigned char*x, unsigned char * y, unsigned char *s_box);
-void prepare_key(unsigned char *key_data_ptr, int key_data_len,unsigned char *s_box);
-void rc4(unsigned char *buffer_ptr, int buffer_len, unsigned char *s_box);
+void prepare_key(unsigned char *key_data_ptr, size_t key_data_len,unsigned char *s_box);
+void rc4(unsigned char *buffer_ptr, size_t buffer_len, unsigned char *s_box);
 /************************************************************************/
 /* the data type is unsigned char,so the %256 is no necessary           */
 /************************************************************************/
@@ -61,7 +60,7 @@ __device__ __host__ static void swap_byte(unsigned char *a, unsigned char *b)
 	*b = swapByte; 
 }
 
-__device__ bool device_isKeyRight(const unsigned char *validateKey, const int key_len, volatile bool* found) 
+__device__ bool device_isKeyRight(const unsigned char *validateKey, const int key_len, volatile size_t* found) 
 { 
 	//KSA
   unsigned char* state = (shared_mem + (memory_per_thread * threadIdx.x) + maxKeyLen);
@@ -123,10 +122,10 @@ __device__ __host__ unsigned char rc4_single(unsigned char* x, unsigned char* y,
  *
  * \return void
 **/
-void prepare_key(unsigned char *key_data_ptr, int key_data_len, unsigned char* s_box) 
+void prepare_key(unsigned char *key_data_ptr, size_t key_data_len, unsigned char* s_box) 
 { 
 	unsigned char index1 = 0, index2 = 0, *state; 
-	short counter;    
+	short counter; //FIXME figure out why this was a short before
 
 	state = &s_box[0];        
 	for(counter = 0; counter < STATE_LEN; counter++)          
@@ -140,7 +139,7 @@ void prepare_key(unsigned char *key_data_ptr, int key_data_len, unsigned char* s
 	}      
 } 
 
-void rc4(unsigned char *buffer_ptr, int buffer_len, unsigned char *s_box) 
+void rc4(unsigned char *buffer_ptr, size_t buffer_len, unsigned char *s_box) 
 {  
 	unsigned char x = 0, y = 0, *state;
 	short counter; 
