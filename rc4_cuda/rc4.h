@@ -8,6 +8,8 @@
 #include <fstream>
 #include <time.h>
 #include <math.h>
+//Use wingetopt for portability for now
+#include "../wingetopt/src/getopt.h"
 #include <Windows.h>
 
 //This is binary so all characters are valid

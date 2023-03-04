@@ -180,78 +180,220 @@ cudaError_t crackRc4WithCuda(unsigned char* knownKeyStream_host, int knownStream
 
 int main(int argc, char *argv[])
 {
+  char *fileName = 0, *knownPlainText = 0, *knownKey = 0, *plainText = 0, *noNullSalt = 0, *saltFile = 0, *knownFile = 0;
+  unsigned char *actualSalt = 0, *cipherText = 0, *actualPlainText = 0;
+  unsigned char* s_box = (unsigned char*)malloc(sizeof(unsigned char)*256);
 
-	unsigned char* s_box = (unsigned char*)malloc(sizeof(unsigned char)*256);
+  int opt;
+  size_t cipherLength = 0, saltLength = 0, keyLength = 0, knownLength = 0;
+  // handle options.
+  while ((opt = getopt(argc, argv, ":F:t:k:p:s:S:l:L:T:I:") != -1))
+  {
+    switch (opt)
+    {
+    case 'F':
+      fileName = optarg;
+    case 't':
+      knownPlainText = optarg;
+    case 'k':
+      knownKey = optarg;
+    case 'p':
+      plainText = optarg;
+    case 's':
+      noNullSalt = optarg;
+    case 'S':
+      saltFile = optarg;
+    case 'l':
+      if (1 != sscanf(optarg, "%zu", &cipherLength))
+      {
+        fprintf(stderr, "Couldn't parse the length of the cipher text (-l)");
+        return 1;
+      }
+    case 'L':
+      if (1 != sscanf(optarg, "%zu", &saltLength))
+      {
+        fprintf(stderr, "Couldn't parse the length of the salt (-L)");
+        return 1;
+      }
+    case 'T':
+      knownFile = optarg;
+    case 'I':
+      if (1 != sscanf(optarg, "%zu", &knownLength))
+      {
+        fprintf(stderr, "Couldn't parse the length of known text (-T)");
+        return 1;
+      }
+    }
+  }
+  if ((knownPlainText == 0 && knownFile == 0) || (fileName == 0 && (plainText == 0 || knownKey == 0)))
+  {
+    fprintf(stderr, "You must specify the -t (the known plaintext) or -T (known text in a file) and either -F (a file name to decrypt) or -p (plain text to encrypt) and -k (a key to encrypt your plaintext)");
+    return 1;
+  }
+  if (fileName != 0 && (plainText != 0 || knownKey != 0))
+  {
+    fprintf(stderr, "Specify either -F, for an input file, or -k and -p for a key and plaintext");
+    return 1;
+  }
+  if (saltFile != 0 && noNullSalt != 0)
+  {
+    fprintf(stderr, "Specify either -S, for a salt from a file, or -s for a salt from the commandline");
+  }
+    if (knownFile != 0 && knownPlainText != 0)
+  {
+    fprintf(stderr, "Specify either -T, for a known text from a file, or -t for known text from the commandline");
+  }
 
-	//Key
-	/*
-  unsigned char encryptKey[] = "KeyKe\x1d\xde\x39\x7a\x08\xbf\x2f\x22\x7d\x79\x4d";
-  unsigned char buffer[] = "RSA2foobar";
-  size_t buffer_len = strlen( (char*)buffer);
-  size_t key_len = strlen( (char*)encryptKey);
-  // Pad the key
-  //while (key_len < host_max_key)
-  //{
-  //  encryptKey[key_len++] = '\x00';
-  //}
-  //memcpy(encryptKey + key_len, "e\x4d\x79\x7d\x22\x2f\xbf\x08\x7a\x39\xde\x1d", 12);
-	
-  prepare_key(encryptKey, key_len, s_box);
-	rc4(buffer, buffer_len, s_box);	
-  */
+  // Get the salt if we have one
+  if (saltFile != 0 || noNullSalt !=0) //do we have a salt specified?
+  {
+    if (saltFile != 0)
+    {
+      if (saltLength == 0)
+      {
+          fprintf(stderr, "Salt from file length not specified (-L) defaulting to 11 bytes");
+          saltLength = 11;
+      }
+      FILE *saltPtr;
+      saltPtr = fopen(saltFile, "rb");
+      actualSalt = (unsigned char *)malloc(sizeof (unsigned char) * saltLength);
+      if (saltLength != fread(actualSalt, sizeof(unsigned char), saltLength, saltPtr))
+      {
+          fprintf(stderr, "Could not read all of %s", saltFile);
+          return 1;
+      }
+      fclose(saltPtr);
+    }
+    else
+    {
+      saltLength = strlen(noNullSalt);
+      actualSalt = (unsigned char*) malloc(sizeof (unsigned char) * saltLength);
+      actualSalt = (unsigned char *) noNullSalt;
+    }
+  }
+
+  // Get the cipher text
+  if (fileName != 0)
+  {
+    if (cipherLength == 0)
+    {
+      fprintf(stderr, "Ciphertext length not specified (-l) defaulting to 128 bytes");
+      cipherLength = 128;
+    }
+    FILE *cipherPtr;
+    cipherPtr = fopen(fileName, "rb");
+    cipherText = (unsigned char*) malloc(sizeof (unsigned char) * cipherLength);
+    if (cipherLength != fread(cipherText, sizeof(unsigned char), cipherLength, cipherPtr))
+    {
+      fprintf(stderr, "Could not read all of %s", fileName);
+      return 1;
+    }
+    fclose(cipherPtr);
+  }
+  else
+  {
+    cipherLength = strlen(plainText);
+    cipherText = (unsigned char*) malloc(cipherLength);
+    cipherText = (unsigned char *) plainText;
+    keyLength = strlen(knownKey);
+    if (saltLength != 0) // if we have salt, append it
+    {
+      if (saltLength + keyLength <= host_max_key)
+      {
+        unsigned char* tempKey = (unsigned char*) malloc(sizeof (unsigned char) * (saltLength + keyLength));
+        memcpy(tempKey, knownKey, keyLength);
+        memcpy(tempKey + keyLength, actualSalt, saltLength);
+        keyLength = keyLength + saltLength;
+        prepare_key(tempKey, keyLength, s_box);
+      }
+      else
+      {
+          fprintf(stderr, "The combined length of the salt and the specified key is greater than the max key length");
+          return 1;
+      }
+    }
+    else
+    {
+      prepare_key((unsigned char *)knownKey, keyLength, s_box); // we know there are no nulls in the key from the command line
+    }
+    rc4(cipherText, cipherLength, s_box);
+  }
+
+  // Get the known plain text
+  if (knownFile != 0)
+  {
+    if (knownLength == 0)
+    {
+      fprintf(stderr, "Known plain text from file length not specified (-I) defaulting to 8 bytes");
+      knownLength = 8;
+    }
+    FILE *knownPtr;
+    knownPtr = fopen(knownFile, "rb");
+    actualPlainText = (unsigned char *)malloc(sizeof (unsigned char) * knownLength);
+    if (knownLength != fread(actualPlainText, sizeof(unsigned char), knownLength, knownPtr))
+    {
+      fprintf(stderr, "Could not read all of %s", knownFile);
+      return 1;
+    }
+    fclose(knownPtr);
+  }
+  else
+  {
+    knownLength = strlen(knownPlainText);
+    actualPlainText = (unsigned char *)malloc(sizeof (unsigned char) * knownLength);
+    actualPlainText = (unsigned char *) knownPlainText;
+  }
+
+  //Free all of our input variables
+  free(fileName);
+  free(knownPlainText);
+  free(knownKey);
+  free(plainText);
+  free(noNullSalt);
+  free(saltFile);
+  free(knownFile);
   
-       //Load from file
-  std::ifstream input_stream("cipher");
-  char temp_buffer[700];
-  unsigned char buffer[700];
-  input_stream.read(temp_buffer, 700);
-  input_stream.close();
-  std::strcpy(reinterpret_cast<char *>(buffer), temp_buffer);
-  size_t buffer_len = 700;
-  size_t key_len = 16;
-
-  unsigned char knownPlainText[] = "RSA2\x88\x00\x00\x00";
-	int known_p_len = 8;
-	unsigned char* knownKeyStream = (unsigned char*) malloc(sizeof(unsigned char) * known_p_len);
-	for (int i = 0; i < known_p_len; i++)
+  
+	unsigned char* knownKeyStream = (unsigned char*) malloc(sizeof (unsigned char) * knownLength);
+	for (int i = 0; i < knownLength; i++)
 	{
-		knownKeyStream[i] = knownPlainText[i] ^ buffer[i];
+		knownKeyStream[i] = knownPlainText[i] ^ cipherText[i];
 	}
 
 	unsigned char* key = (unsigned char*) malloc( sizeof(unsigned char) * (MAX_KEY_LENGTH + 1));
 
-	cudaEvent_t start,stop;
+	cudaEvent_t start, stop;
 	cudaError_t cudaStatus = cudaEventCreate( &start);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaEventCreate(start) failed!");
 		return 1;
 	}
-	cudaStatus=cudaEventCreate( &stop);
+	cudaStatus = cudaEventCreate( &stop);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaEventCreate(stop) failed!");
 		return 1;
 	}
 
-	cudaStatus=cudaEventRecord(start, 0);
+	cudaStatus = cudaEventRecord(start, 0);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaEventRecord(start) failed!");
 		return 1;
 	}
 
-	bool found=false;
-	cudaStatus = crackRc4WithCuda(knownKeyStream, known_p_len , key, &found);
+	bool found = false;
+	cudaStatus = crackRc4WithCuda(knownKeyStream, knownLength , key, &found);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "addWithCuda failed!");
 		return 1;
 	}
 
-	cudaStatus=cudaEventRecord(stop,0);
+	cudaStatus = cudaEventRecord(stop,0);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaEventRecord(stop) failed!");
 		return 1;
 	}
 
-	cudaStatus=cudaEventSynchronize(stop);
+	cudaStatus = cudaEventSynchronize(stop);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaEventSynchronize failed!");
 		return 1;
@@ -263,18 +405,17 @@ int main(int argc, char *argv[])
   if (found)
   {
     printf("The right key has been found.The right key is:%s\n", key);
-    printf("%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x\n", key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7], key[8], key[9], key[10], key[11], key[12], key[13], key[14], key[15]);
-    prepare_key(key, key_len, s_box);
+    prepare_key(key, host_max_key, s_box); //FIXME
 
-    rc4(buffer, buffer_len, s_box);
+    rc4(cipherText, cipherLength, s_box);
 
     std::ofstream outf("decrypted");
-    outf.write((char *)buffer, 700);
+    outf.write((char *)cipherText, cipherLength);
     outf.close();
     std::ofstream outk("outkey");
-    outk.write((char *)key, key_len);
+    outk.write((char *)key, host_max_key); //FIXME
     outk.close();
-    printf("\nThe clear text is:\n%s\n", buffer);
+    printf("\nThe clear text is:\n%s\n", cipherText);
   }
 
   cudaEventDestroy(start);
@@ -283,6 +424,10 @@ int main(int argc, char *argv[])
 	free(key);
 	free(knownKeyStream);
 	free(s_box);
+  free(actualSalt);
+  free(cipherText);
+  free(actualPlainText);
+
 	cudaThreadExit();
 	return 0;
 }
