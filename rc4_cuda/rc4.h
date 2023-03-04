@@ -31,6 +31,9 @@ __constant__ unsigned int start = START_CHARACTER;
 __constant__ unsigned int memory_per_thread = MEMORY_PER_THREAD;
 __constant__ unsigned char knownStreamLen_device;
 __constant__ unsigned char knowStream_device[MAX_KNOWN_STREAM_LEN];
+__constant__ unsigned char saltLen_device;
+__constant__ unsigned char salt_device[MAX_KEY_LENGTH];
+
 
 const size_t host_max_key = MAX_KEY_LENGTH;
 const size_t host_max_known = MAX_KNOWN_STREAM_LEN;

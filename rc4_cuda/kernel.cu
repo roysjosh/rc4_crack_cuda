@@ -39,15 +39,13 @@ __global__ void crackRc4Kernel(unsigned char *key, volatile size_t *found)
     // vKey is a pointer to share_memory
     unsigned char *vKey = (shared_mem + memory_per_thread * threadIdx.x);
     genKey(vKey, myKeyNum, &keyLen);
-    // Pad with nulls
-    // unsigned char salt[12] = "\x1d\xde\x39\x7a\x08\xbf\x2f\x22\x7d\x79\x4d";
-    //"\x4d\x79\x7d\x22\x2f\xbf\x08\x7a\x39\xde\x1d"
-    //memcpy(vKey + keyLen, "\x1d\xde\x39\x7a\x08\xbf\x2f\x22\x7d\x79\x4d", 11);
-    //keyLen = maxKeyLen;
-    // while (keyLen < maxKeyLen)
-    //{
-    //   vKey[keyLen++] = '\x00';
-    // }
+
+    // Add the salt if it was specified.
+    if (saltLen_device > 0)
+    {
+      memcpy(vKey + keyLen, salt_device, saltLen_device);
+      keyLen = keyLen + saltLen_device;
+    }
 
     justIt = device_isKeyRight(vKey, keyLen, found);
 
@@ -77,7 +75,7 @@ void cleanup(unsigned char *key_dev, size_t *found_dev)
 }
 
 // Helper function for using CUDA to add vectors in parallel.
-cudaError_t crackRc4WithCuda(unsigned char *knownKeyStream_host, size_t knownStreamLen_host, unsigned char *key, size_t *foundLen)
+cudaError_t crackRc4WithCuda(unsigned char *knownKeyStream_host, size_t knownStreamLen_host, unsigned char *key, size_t *foundLen, unsigned char *saltHost, size_t saltLenHost)
 {
   cudaError_t cudaStatus;
 
@@ -122,6 +120,22 @@ cudaError_t crackRc4WithCuda(unsigned char *knownKeyStream_host, size_t knownStr
   }
 
   // Copy constant memory
+  cudaStatus = cudaMemcpyToSymbol(salt_device, saltHost, sizeof(unsigned char) * saltLenHost);
+  if (cudaStatus != cudaSuccess)
+  {
+    fprintf(stderr, "cudaMemcpyToSymbol salt failed!");
+    cleanup(key_dev, found_dev);
+    return cudaStatus;
+  }
+
+  cudaStatus = cudaMemcpyToSymbol((const void *)&saltLen_device, (const void *)&saltLenHost, sizeof(unsigned char));
+  if (cudaStatus != cudaSuccess)
+  {
+    fprintf(stderr, "cudaMemcpyToSymbol saltLen failed!");
+    cleanup(key_dev, found_dev);
+    return cudaStatus;
+  }
+  
   cudaStatus = cudaMemcpyToSymbol(knowStream_device, knownKeyStream_host, sizeof(unsigned char) * knownStreamLen_host);
   if (cudaStatus != cudaSuccess)
   {
@@ -137,6 +151,7 @@ cudaError_t crackRc4WithCuda(unsigned char *knownKeyStream_host, size_t knownStr
     cleanup(key_dev, found_dev);
     return cudaStatus;
   }
+
 
   // Launch a kernel on the GPU with one thread for each element.
   size_t threadNum = (prop.sharedMemPerBlock / MEMORY_PER_THREAD), share_memory = prop.sharedMemPerBlock; // FIXME double check that this works
@@ -404,7 +419,7 @@ int main(int argc, char *argv[])
 
   size_t foundKeyLen = 0;
   // Since null can be the value of any byte of the key we have to know the length
-  cudaStatus = crackRc4WithCuda(knownKeyStream, knownLength, key, &foundKeyLen);
+  cudaStatus = crackRc4WithCuda(knownKeyStream, knownLength, key, &foundKeyLen, actualSalt, saltLength);
   if (cudaStatus != cudaSuccess)
   {
     fprintf(stderr, "addWithCuda failed!");
@@ -448,14 +463,12 @@ int main(int argc, char *argv[])
 
   // Free all of our input variables
   free(fileName);
-  free(noNullSalt);
   free(saltFile);
   free(knownFile);
   free(key);
   free(knownKeyStream);
   free(s_box);
-  free(actualSalt);
-  // free(cipherText);
+  //free(actualSalt);
 
   cudaThreadExit();
   return 0;
