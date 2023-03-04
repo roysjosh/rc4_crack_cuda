@@ -63,7 +63,7 @@ __device__ __host__ static void swap_byte(unsigned char *a, unsigned char *b)
 	*b = swapByte; 
 }
 
-__device__ bool device_isKeyRight(const unsigned char *validateKey, const int key_len, volatile size_t* found) 
+__device__ bool device_isKeyRight(const unsigned char *validateKey, const int key_len) 
 { 
 	//KSA
   unsigned char* state = (shared_mem + (memory_per_thread * threadIdx.x) + maxKeyLen);

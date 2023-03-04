@@ -47,7 +47,7 @@ __global__ void crackRc4Kernel(unsigned char *key, volatile size_t *found)
       keyLen = keyLen + saltLen_device;
     }
 
-    justIt = device_isKeyRight(vKey, keyLen, found);
+    justIt = device_isKeyRight(vKey, keyLen);
 
     // Exit if one of the other blocks found it
     if (*found != 0)
@@ -135,7 +135,7 @@ cudaError_t crackRc4WithCuda(unsigned char *knownKeyStream_host, size_t knownStr
     cleanup(key_dev, found_dev);
     return cudaStatus;
   }
-  
+
   cudaStatus = cudaMemcpyToSymbol(knowStream_device, knownKeyStream_host, sizeof(unsigned char) * knownStreamLen_host);
   if (cudaStatus != cudaSuccess)
   {
@@ -151,7 +151,6 @@ cudaError_t crackRc4WithCuda(unsigned char *knownKeyStream_host, size_t knownStr
     cleanup(key_dev, found_dev);
     return cudaStatus;
   }
-
 
   // Launch a kernel on the GPU with one thread for each element.
   size_t threadNum = (prop.sharedMemPerBlock / MEMORY_PER_THREAD), share_memory = prop.sharedMemPerBlock; // FIXME double check that this works
@@ -300,6 +299,11 @@ int main(int argc, char *argv[])
       }
       FILE *saltPtr;
       saltPtr = fopen(saltFile, "rb");
+      if (saltPtr == 0)
+      {
+        fprintf(stderr, "Could open file %s", saltFile);
+        return 1;
+      }
       actualSalt = (unsigned char *)malloc(sizeof(unsigned char) * saltLength);
       if (saltLength != fread(actualSalt, sizeof(unsigned char), saltLength, saltPtr))
       {
@@ -325,6 +329,11 @@ int main(int argc, char *argv[])
     }
     FILE *cipherPtr;
     cipherPtr = fopen(fileName, "rb");
+    if (cipherPtr == 0)
+    {
+      fprintf(stderr, "Could open file %s", fileName);
+      return 1;
+    }
     cipherText = (unsigned char *)malloc(sizeof(unsigned char) * cipherLength);
     if (cipherLength != fread(cipherText, sizeof(unsigned char), cipherLength, cipherPtr))
     {
@@ -368,6 +377,11 @@ int main(int argc, char *argv[])
     }
     FILE *knownPtr;
     knownPtr = fopen(knownFile, "rb");
+    if (knownPtr == 0)
+    {
+      fprintf(stderr, "Could open file %s", knownFile);
+      return 1;
+    }
     actualPlainText = (unsigned char *)malloc(sizeof(unsigned char) * knownLength);
     if (knownLength != fread(actualPlainText, sizeof(unsigned char), knownLength, knownPtr))
     {
@@ -462,14 +476,10 @@ int main(int argc, char *argv[])
   cudaEventDestroy(stop);
 
   // Free all of our input variables
-  free(fileName);
-  free(saltFile);
-  free(knownFile);
   free(key);
   free(knownKeyStream);
   free(s_box);
-  //free(actualSalt);
 
-  cudaThreadExit();
+  cudaDeviceReset();
   return 0;
 }
