@@ -20,7 +20,7 @@
 
 // Space for keys and S-boxen in the shared memory
 #define MEMORY_PER_THREAD 276
-#define MAX_KEY_LENGTH 16 //max key length
+#define MAX_KEY_LENGTH 5 //max key length
 #define STATE_LEN	256
 #define MAX_KNOWN_STREAM_LEN 8
 
@@ -32,7 +32,7 @@ __constant__ unsigned int memory_per_thread = MEMORY_PER_THREAD;
 __constant__ unsigned char knownStreamLen_device;
 __constant__ unsigned char knowStream_device[MAX_KNOWN_STREAM_LEN];
 __constant__ unsigned char saltLen_device;
-__constant__ unsigned char salt_device[MAX_KEY_LENGTH];
+__constant__ unsigned char salt_device[8];
 
 
 const size_t host_max_key = MAX_KEY_LENGTH;
@@ -66,7 +66,7 @@ __device__ __host__ static void swap_byte(unsigned char *a, unsigned char *b)
 __device__ bool device_isKeyRight(const unsigned char *validateKey, const int key_len) 
 { 
 	//KSA
-  unsigned char* state = (shared_mem + (memory_per_thread * threadIdx.x) + maxKeyLen);
+	unsigned char* state = shared_mem + (memory_per_thread * threadIdx.x);
 	unsigned char index1 = 0, index2 = 0;
 	short counter = 0;
 
@@ -77,13 +77,20 @@ __device__ bool device_isKeyRight(const unsigned char *validateKey, const int ke
 
 	for(counter = 0; counter < STATE_LEN; counter++)      
 	{             
-		index2 = (validateKey[index1] + state[counter] + index2);            
+		index2 = (validateKey[counter % key_len] + state[counter] + index2);
 		swap_byte( &state[counter], &state[index2]);
-		index1 = (index1 + 1) % key_len;  
 	} 
 
+	// DISCARD
+#if 1
+	index1 = 0, index2 = 0, counter = 0;
+	for (; counter < 256; counter++) {
+		rc4_single(&index1, &index2, state);
+	}
+#endif
+
 	//PRGA
-	index1=0, index2=0, counter=0; 
+	counter = 0;
 	for (; counter < knownStreamLen_device; counter++)
 	{
 		if(knowStream_device[counter] != rc4_single( &index1, &index2, state))

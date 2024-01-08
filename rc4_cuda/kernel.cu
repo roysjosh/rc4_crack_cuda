@@ -18,6 +18,7 @@ __device__ void genKey(unsigned char *keyStartAddr, unsigned long long myKeyNum,
     *key_len = (maxKeyLen - p - 1);
     return keyStartAddr + p + 1;
   */
+#if 0
   size_t i = 0;
   while (myKeyNum && i < maxKeyLen)
   {
@@ -25,6 +26,14 @@ __device__ void genKey(unsigned char *keyStartAddr, unsigned long long myKeyNum,
     myKeyNum = (myKeyNum - 1) / keyNum;
   }
   *key_len = (i);
+#endif
+#if 1
+  *key_len = 5; // XXX
+  for (int i = 0; i < *key_len; i++) {
+      keyStartAddr[i] = myKeyNum % 256;
+      myKeyNum >>= 8;
+  }
+#endif
 }
 
 __global__ void crackRc4Kernel(unsigned char *key, volatile size_t *found)
@@ -33,11 +42,14 @@ __global__ void crackRc4Kernel(unsigned char *key, volatile size_t *found)
   const unsigned long long totalThreadNum = gridDim.x * blockDim.x;
   const unsigned long long keyNum_per_thread = maxNum / totalThreadNum;
   unsigned long long myKeyNum = (threadIdx.x + blockIdx.x * blockDim.x);
+  //printf("totalThreadNum: %i\n", totalThreadNum);
+  //printf("keyNum_per_thread: %i\n", keyNum_per_thread);
+  //printf("myKeyNum: %i\n", myKeyNum);
   bool justIt;
   for (unsigned long long i = 0; i <= keyNum_per_thread; myKeyNum += totalThreadNum, ++i)
   {
     // vKey is a pointer to share_memory
-    unsigned char *vKey = (shared_mem + memory_per_thread * threadIdx.x);
+    unsigned char *vKey = (shared_mem + memory_per_thread * threadIdx.x + STATE_LEN);
     genKey(vKey, myKeyNum, &keyLen);
 
     // Add the salt if it was specified.
@@ -389,6 +401,7 @@ int main(int argc, char *argv[])
       return 1;
     }
     fclose(knownPtr);
+    knownPlainText = (char *)actualPlainText;
   }
   else
   {
@@ -406,6 +419,10 @@ int main(int argc, char *argv[])
   for (int i = 0; i < knownLength; i++)
   {
     knownKeyStream[i] = knownPlainText[i] ^ cipherText[i];
+    fprintf(stderr, "- %02X\n", knownKeyStream[i]);
+  }
+  for (int i = 0; i < saltLength; i++) {
+      fprintf(stderr, "salt[%i] = %02x\n", i, actualSalt[i]);
   }
 
   unsigned char *key = (unsigned char *)malloc(sizeof(unsigned char) * (MAX_KEY_LENGTH + 1));
@@ -459,7 +476,12 @@ int main(int argc, char *argv[])
   printf("The time we used was:%fs\n", useTime);
   if (foundKeyLen != 0)
   {
-    printf("The right key has been found.The right key is:%s\n", key);
+    printf("The right key has been found.The right key is:\n");
+    for (int idx = 0; idx < foundKeyLen; idx++) {
+        printf("%02X", key[idx]);
+    }
+    printf("\n");
+#if 0
     prepare_key(key, foundKeyLen, s_box);
 
     rc4(cipherText, cipherLength, s_box);
@@ -470,6 +492,7 @@ int main(int argc, char *argv[])
     std::ofstream outk("outkey");
     outk.write((char *)key, foundKeyLen);
     printf("\nThe clear text is:\n%s\n", cipherText);
+#endif
   }
 
   cudaEventDestroy(start);
